@@ -44,7 +44,12 @@ require('flex_plane').list()
 Recommended usage:
 
 ```lua
-vim.api.nvim_create_user_command('AICode', function() require('flex_plane').toggle('claude') end , { desc = 'Open claude code.' })
+vim.api.nvim_create_user_command('AICode', function()
+require('flex_plane').toggle('claude', {
+  desc = "Claude cli.",
+  position = "top",
+})
+end , { desc = 'Open claude code.' })
 ```
 
 ### Move Window
