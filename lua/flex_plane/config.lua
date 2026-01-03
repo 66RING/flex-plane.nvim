@@ -9,7 +9,7 @@ local M = {}
 
 M.options = {
   position = "right",
-  default_width = 80,
+  default_width = 50,
   default_height = 20,
   default_cmd = vim.o.shell,
   close_on_exit = false,
