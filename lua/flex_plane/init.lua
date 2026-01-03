@@ -288,9 +288,6 @@ function M.move(direction)
     return
   end
 
-  -- Save current size
-  save_window_size(win_info)
-
   -- Move window
   local cmd_map = {
     top = "wincmd K",
@@ -300,7 +297,11 @@ function M.move(direction)
   }
   vim.cmd(cmd_map[direction])
 
-  -- Restore size after move
+  -- Clear saved size so apply_window_size uses defaults
+  win_info.width = nil
+  win_info.height = nil
+
+  -- Restore default size after move
   local current_win = vim.api.nvim_get_current_win()
   apply_window_size(win_info, current_win)
 end
