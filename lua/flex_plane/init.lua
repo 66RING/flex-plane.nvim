@@ -288,22 +288,31 @@ function M.move(direction)
     return
   end
 
-  -- Move window
-  local cmd_map = {
-    top = "wincmd K",
-    bottom = "wincmd J",
-    left = "wincmd H",
-    right = "wincmd L",
-  }
-  vim.cmd(cmd_map[direction])
+  -- Save original position
+  local original_position = win_info.opts.position
 
-  -- Clear saved size so apply_window_size uses defaults
+  -- Temporarily change position
+  win_info.opts.position = direction
+
+  -- Close current window (keeps buffer)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == win_info.buf then
+      vim.api.nvim_win_close(win, true)
+      break
+    end
+  end
+
+  -- Reopen at new position
+  local split_cmd = direction_to_split(direction)
+  vim.cmd(split_cmd)
+
+  local new_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(new_win, win_info.buf)
+
+  -- Clear saved size and apply defaults
   win_info.width = nil
   win_info.height = nil
-
-  -- Restore default size after move
-  local current_win = vim.api.nvim_get_current_win()
-  apply_window_size(win_info, current_win)
+  apply_window_size(win_info, new_win)
 end
 
 --- List all flex plane windows in quickfix
