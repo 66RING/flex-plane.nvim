@@ -249,6 +249,44 @@ function M.hide(id)
   return false
 end
 
+--- Get the flex plane window info for current window
+---@return FlexPlaneWindow?
+local function get_current_flex_plane_window()
+  local current_buf = vim.api.nvim_get_current_buf()
+  for _, win_info in ipairs(M.windows) do
+    if win_info.buf == current_buf then
+      return win_info
+    end
+  end
+  return nil
+end
+
+--- Move current flex plane window to a direction
+---@param direction "top"|"bottom"|"left"|"right"
+function M.move(direction)
+  local win_info = get_current_flex_plane_window()
+  if not win_info then
+    vim.notify("Not in a flex plane window", vim.log.levels.WARN)
+    return
+  end
+
+  -- Save current size
+  save_window_size(win_info)
+
+  -- Move window
+  local cmd_map = {
+    top = "wincmd K",
+    bottom = "wincmd J",
+    left = "wincmd H",
+    right = "wincmd L",
+  }
+  vim.cmd(cmd_map[direction])
+
+  -- Restore size after move
+  local current_win = vim.api.nvim_get_current_win()
+  apply_window_size(win_info, current_win)
+end
+
 --- List all flex plane windows in quickfix
 function M.list()
   if #M.windows == 0 then

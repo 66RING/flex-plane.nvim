@@ -10,6 +10,7 @@ A simple Neovim plugin to manage sidebar windows that run any command/program.
 - Keep buffers running in background
 - **Remember window size** - your adjustments persist across toggle
 - **Fixed size windows** - protected from other plugins' auto-resize
+- **Move window position** - quick shortcuts to reposition windows
 - **Quickfix list** - manage all windows from quickfix panel
 - Help panel to manage all windows
 
@@ -75,6 +76,16 @@ require('flex_plane').close(1)
 
 -- Close all windows
 require('flex_plane').close_all()
+```
+
+### Move Window
+
+```lua
+-- Move current window to a position (must be in flex_plane window)
+require('flex_plane').move('top')    -- Move to top
+require('flex_plane').move('bottom') -- Move to bottom
+require('flex_plane').move('left')   -- Move to left
+require('flex_plane').move('right')  -- Move to right
 ```
 
 ### Quickfix List
