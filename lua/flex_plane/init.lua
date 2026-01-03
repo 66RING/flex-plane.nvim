@@ -4,24 +4,80 @@ local M = {}
 ---@class FlexPlaneWindow
 ---@field id number
 ---@field buf number
----@field win number
 ---@field cmd string
 ---@field opts table
+---@field width number? Saved width for vertical splits
+---@field height number? Saved height for horizontal splits
 
 ---@type FlexPlaneWindow[]
 M.windows = {}
 
+local augroup = vim.api.nvim_create_augroup("FlexPlane", { clear = true })
+
+--- Save window size when user resizes it
+---@param win_info FlexPlaneWindow
+local function save_window_size(win_info)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == win_info.buf then
+      local width = vim.api.nvim_win_get_width(win)
+      local height = vim.api.nvim_win_get_height(win)
+      win_info.width = width
+      win_info.height = height
+      break
+    end
+  end
+end
+
+--- Apply saved size to window
+---@param win_info FlexPlaneWindow
+---@param win number Window handle
+local function apply_window_size(win_info, win)
+  local opts = win_info.opts
+
+  -- Set winfix options to prevent other plugins from resizing
+  vim.api.nvim_set_option_value("winfixwidth", true, { win = win })
+  vim.api.nvim_set_option_value("winfixheight", true, { win = win })
+
+  if opts.direction == "vertical" then
+    if win_info.width then
+      vim.api.nvim_win_set_width(win, win_info.width)
+    elseif opts.default_width then
+      local width = type(opts.default_width) == "function" and opts.default_width() or opts.default_width
+      vim.api.nvim_win_set_width(win, width)
+      win_info.width = width
+    end
+  else -- horizontal
+    if win_info.height then
+      vim.api.nvim_win_set_height(win, win_info.height)
+    elseif opts.default_height then
+      local height = type(opts.default_height) == "function" and opts.default_height() or opts.default_height
+      vim.api.nvim_win_set_height(win, height)
+      win_info.height = height
+    end
+  end
+end
+
 --- Create a new flex plane window
 ---@param cmd string? Command to run (optional, uses default if not provided)
 ---@param user_opts table? User options
----@return number win_id
+---@return number buf_id Buffer ID
 function M.open(cmd, user_opts)
   local opts = vim.tbl_deep_extend("force", config.options, user_opts or {})
 
-  -- Calculate window size
-  local width = opts.width
-  if type(width) == "function" then
-    width = width()
+  -- Check if window with same command already exists
+  for _, win_info in ipairs(M.windows) do
+    if win_info.cmd == (cmd or opts.default_cmd) then
+      -- Focus existing window
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(win) == win_info.buf then
+          vim.api.nvim_set_current_win(win)
+          return win_info.buf
+        end
+      end
+      -- Window exists but not visible, show it
+      M.show(win_info.id)
+      return win_info.buf
+    end
   end
 
   -- Create buffer
@@ -29,34 +85,29 @@ function M.open(cmd, user_opts)
   local buf_name = cmd and ("flex-plane: " .. cmd) or "flex-plane: terminal"
   vim.api.nvim_buf_set_name(buf, buf_name)
 
-  -- Calculate window position and size
-  local col = opts.position == "left" and 0 or vim.o.columns - width
-  local row = 0
-
-  -- Open window
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = vim.o.lines,
-    row = row,
-    col = col,
-    style = "minimal",
-    border = opts.border,
-  })
-
-  -- Set window options
-  vim.api.nvim_win_set_option(win, "wrap", false)
-  vim.api.nvim_win_set_option(win, "signcolumn", "no")
-
   -- Store window info
   local window_info = {
     id = #M.windows + 1,
     buf = buf,
-    win = win,
     cmd = cmd or opts.default_cmd,
     opts = opts,
+    width = nil,
+    height = nil,
   }
   table.insert(M.windows, window_info)
+
+  -- Open split window
+  if opts.direction == "horizontal" then
+    vim.cmd(opts.split_cmd .. " split")
+  else
+    vim.cmd(opts.split_cmd .. " vsplit")
+  end
+
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(win, buf)
+
+  -- Apply window size
+  apply_window_size(window_info, win)
 
   -- Run command
   if window_info.cmd then
@@ -72,7 +123,7 @@ function M.open(cmd, user_opts)
     })
   end
 
-  return window_info.id
+  return window_info.buf
 end
 
 --- Run command in window
@@ -84,11 +135,6 @@ function M.run_command(window_info)
   if not cmd or cmd == "" then
     return
   end
-
-  -- Check if it's a terminal command (starts with term)
-  local is_terminal = vim.startswith(cmd, "term:") or
-    vim.startswith(cmd, "terminal:") or
-    vim.startswith(cmd, "!")
 
   local final_cmd = cmd:gsub("^term:", ""):gsub("^terminal:", ""):gsub("^!", "")
 
@@ -114,9 +160,13 @@ end
 function M.close(id)
   for i, win_info in ipairs(M.windows) do
     if win_info.id == id then
-      if vim.api.nvim_win_is_valid(win_info.win) then
-        vim.api.nvim_win_close(win_info.win, true)
+      -- Close all windows showing this buffer
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == win_info.buf then
+          vim.api.nvim_win_close(win, true)
+        end
       end
+      -- Delete buffer
       if vim.api.nvim_buf_is_valid(win_info.buf) then
         vim.api.nvim_buf_delete(win_info.buf, { force = true })
       end
@@ -141,21 +191,209 @@ function M.toggle(cmd, user_opts)
   -- Find existing window with same command
   for _, win_info in ipairs(M.windows) do
     if win_info.cmd == (cmd or config.options.default_cmd) then
-      M.close(win_info.id)
+      -- Check if window is visible
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(win) == win_info.buf then
+          -- Window is visible, hide it
+          M.hide(win_info.id)
+          return
+        end
+      end
+      -- Buffer exists but not visible, show it
+      M.show(win_info.id)
       return
     end
   end
   M.open(cmd, user_opts)
 end
 
+--- Show an existing flex plane window (open in split)
+---@param id number Window ID
+function M.show(id)
+  for _, win_info in ipairs(M.windows) do
+    if win_info.id == id then
+      local opts = win_info.opts
+      if opts.direction == "horizontal" then
+        vim.cmd(opts.split_cmd .. " split")
+      else
+        vim.cmd(opts.split_cmd .. " vsplit")
+      end
+
+      local win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(win, win_info.buf)
+
+      -- Restore saved size
+      apply_window_size(win_info, win)
+      return true
+    end
+  end
+  return false
+end
+
+--- Hide a flex plane window (close window but keep buffer)
+---@param id number Window ID
+function M.hide(id)
+  for _, win_info in ipairs(M.windows) do
+    if win_info.id == id then
+      -- Save size before hiding
+      save_window_size(win_info)
+
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == win_info.buf then
+          vim.api.nvim_win_close(win, true)
+        end
+      end
+      return true
+    end
+  end
+  return false
+end
+
+--- List all flex plane windows
+function M.list()
+  if #M.windows == 0 then
+    print("No flex plane windows")
+    return
+  end
+
+  print("Flex Plane Windows:")
+  print("====================")
+  for _, win_info in ipairs(M.windows) do
+    local visible = false
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(win) == win_info.buf then
+        visible = true
+        break
+      end
+    end
+
+    local status = visible and "[Visible]" or "[Hidden]"
+    local size_info = ""
+    if win_info.opts.direction == "vertical" and win_info.width then
+      size_info = string.format(" (width: %d)", win_info.width)
+    elseif win_info.opts.direction == "horizontal" and win_info.height then
+      size_info = string.format(" (height: %d)", win_info.height)
+    end
+    print(string.format("  [%d] %s - %s%s", win_info.id, status, win_info.cmd, size_info))
+  end
+end
+
+--- Show help with all windows and key actions
+function M.help()
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+  vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
+  vim.api.nvim_buf_set_name(buf, "flex-plane-help")
+
+  local lines = {
+    "Flex Plane - Help",
+    "=================",
+    "",
+    "Windows:",
+  }
+
+  if #M.windows == 0 then
+    table.insert(lines, "  No active windows")
+  else
+    for _, win_info in ipairs(M.windows) do
+      local visible = false
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(win) == win_info.buf then
+          visible = true
+          break
+        end
+      end
+      local status = visible and "+" or " "
+      local size_info = ""
+      if win_info.opts.direction == "vertical" and win_info.width then
+        size_info = string.format(" [%d cols]", win_info.width)
+      elseif win_info.opts.direction == "horizontal" and win_info.height then
+        size_info = string.format(" [%d rows]", win_info.height)
+      end
+      table.insert(lines, string.format("  [%c] %d: %s%s", status, win_info.id, win_info.cmd, size_info))
+    end
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, "Actions:")
+  table.insert(lines, "  <Enter> - Show/Hide selected window")
+  table.insert(lines, "  d       - Delete selected window")
+  table.insert(lines, "  q       - Close this help")
+
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  -- Open in split
+  vim.cmd("vsplit")
+  vim.api.nvim_win_set_buf(0, buf)
+  vim.api.nvim_win_set_option(0, "number", false)
+  vim.api.nvim_win_set_option(0, "relativenumber", false)
+  vim.api.nvim_win_set_option(0, "signcolumn", "no")
+
+  -- Set up keymaps
+  vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", { silent = true })
+  vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", ":lua require('flex_plane')._help_action('show')<CR>",
+    { silent = true })
+  vim.api.nvim_buf_set_keymap(buf, "n", "d", ":lua require('flex_plane')._help_action('delete')<CR>",
+    { silent = true })
+
+  -- Store current windows for keymap actions
+  M._help_windows = {}
+  for _, win_info in ipairs(M.windows) do
+    table.insert(M._help_windows, win_info.id)
+  end
+end
+
+--- Handle help window actions
+---@param action string Action to perform
+function M._help_action(action)
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  local window_idx = line - 9 -- Skip header lines
+
+  if M._help_windows and M._help_windows[window_idx] then
+    local id = M._help_windows[window_idx]
+    if action == "show" then
+      local visible = false
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(win) == M.windows[id].buf then
+          visible = true
+          break
+        end
+      end
+
+      if visible then
+        M.hide(id)
+      else
+        M.show(id)
+      end
+      M.help() -- Refresh help
+    elseif action == "delete" then
+      M.close(id)
+      M.help() -- Refresh help
+    end
+  end
+end
+
 --- Setup plugin options
 ---@param opts table?
 function M.setup(opts)
   config.setup(opts)
-end
 
-function M.hi()
-  print("i")
+  -- Set up WinResized autocmd to track user window size changes
+  vim.api.nvim_create_autocmd("WinResized", {
+    group = augroup,
+    callback = function()
+      for _, win_info in ipairs(M.windows) do
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.api.nvim_win_get_buf(win) == win_info.buf then
+            if vim.tbl_contains(vim.v.event.windows, win) then
+              -- User resized this window, save the new size
+              save_window_size(win_info)
+            end
+          end
+        end
+      end
+    end,
+  })
 end
 
 return M
