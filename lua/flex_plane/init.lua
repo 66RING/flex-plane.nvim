@@ -249,16 +249,15 @@ function M.hide(id)
   return false
 end
 
---- List all flex plane windows
+--- List all flex plane windows in quickfix
 function M.list()
   if #M.windows == 0 then
-    print("No flex plane windows")
+    vim.notify("No flex plane windows", vim.log.levels.INFO)
     return
   end
 
-  print("Flex Plane Windows:")
-  print("====================")
-  for _, win_info in ipairs(M.windows) do
+  local qf_list = {}
+  for idx, win_info in ipairs(M.windows) do
     local visible = false
     for _, win in ipairs(vim.api.nvim_list_wins()) do
       if vim.api.nvim_win_get_buf(win) == win_info.buf then
@@ -267,15 +266,42 @@ function M.list()
       end
     end
 
-    local status = visible and "[Visible]" or "[Hidden]"
+    local status = visible and "+" or " "
     local size_info = ""
     if win_info.opts.direction == "vertical" and win_info.width then
-      size_info = string.format(" (width: %d)", win_info.width)
+      size_info = string.format("[%d cols] ", win_info.width)
     elseif win_info.opts.direction == "horizontal" and win_info.height then
-      size_info = string.format(" (height: %d)", win_info.height)
+      size_info = string.format("[%d rows] ", win_info.height)
     end
-    print(string.format("  [%d] %s - %s%s", win_info.id, status, win_info.cmd, size_info))
+
+    table.insert(qf_list, {
+      bufnr = 0,
+      lnum = idx,
+      col = 1,
+      text = string.format("[%s] %s: %s", status, size_info, win_info.cmd),
+    })
   end
+
+  -- Store mapping from line number to command
+  M._qf_commands = {}
+  for idx, win_info in ipairs(M.windows) do
+    M._qf_commands[idx] = win_info.cmd
+  end
+
+  vim.fn.setqflist(qf_list, "r")
+  vim.cmd("copen")
+
+  -- Map Enter to toggle
+  local qf_win = vim.fn.win_getid(vim.fn.winnr("$"))
+  local qf_buf = vim.api.nvim_win_get_buf(qf_win)
+  vim.keymap.set("n", "<CR>", function()
+    local line = vim.api.nvim_win_get_cursor(0)[1]
+    local cmd = M._qf_commands[line]
+    if cmd then
+      vim.cmd("cclose")
+      M.toggle(cmd)
+    end
+  end, { buffer = qf_buf, nowait = true })
 end
 
 --- Show help with all windows and key actions

@@ -10,6 +10,7 @@ A simple Neovim plugin to manage sidebar windows that run any command/program.
 - Keep buffers running in background
 - **Remember window size** - your adjustments persist across toggle
 - **Fixed size windows** - protected from other plugins' auto-resize
+- **Quickfix list** - manage all windows from quickfix panel
 - Help panel to manage all windows
 
 ## Installation
@@ -76,12 +77,18 @@ require('flex_plane').close(1)
 require('flex_plane').close_all()
 ```
 
-### List & Help
+### Quickfix List
 
 ```lua
--- List all windows in command line (shows saved sizes)
+-- Open quickfix list with all windows
 require('flex_plane').list()
+```
 
+Shows all windows with visibility status and size info.
+
+### Help Panel
+
+```lua
 -- Open interactive help panel
 require('flex_plane').help()
 ```
@@ -145,7 +152,7 @@ end, { desc = 'Toggle htop' })
 
 vim.keymap.set('n', '<leader>tl', function()
   require('flex_plane').list()
-end, { desc = 'List all windows' })
+end, { desc = 'List all windows (quickfix)' })
 
 vim.keymap.set('n', '<leader>tp', function()
   require('flex_plane').help()
