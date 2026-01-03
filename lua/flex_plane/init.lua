@@ -91,14 +91,22 @@ function M.open(cmd, user_opts)
   -- Check if window with same command already exists
   for _, win_info in ipairs(M.windows) do
     if win_info.cmd == (cmd or opts.default_cmd) then
-      -- Focus existing window
+      -- Check if buffer still valid
+      if not vim.api.nvim_buf_is_valid(win_info.buf) then
+        -- Buffer invalid, remove and create new
+        table.remove(M.windows, win_info.id)
+        break
+      end
+
+      -- Check if window is visible
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_get_buf(win) == win_info.buf then
           vim.api.nvim_set_current_win(win)
           return win_info.buf
         end
       end
-      -- Window exists but not visible, show it
+
+      -- Window not visible, show it
       M.show(win_info.id)
       return win_info.buf
     end
@@ -212,6 +220,13 @@ function M.toggle(cmd, user_opts)
   -- Find existing window with same command
   for _, win_info in ipairs(M.windows) do
     if win_info.cmd == (cmd or config.options.default_cmd) then
+      -- Check if buffer still valid
+      if not vim.api.nvim_buf_is_valid(win_info.buf) then
+        -- Buffer invalid, remove and create new
+        table.remove(M.windows, win_info.id)
+        break
+      end
+
       -- Check if window is visible
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_get_buf(win) == win_info.buf then
