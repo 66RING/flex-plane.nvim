@@ -5,6 +5,7 @@ local M = {}
 ---@field id number
 ---@field buf number
 ---@field cmd string
+---@field desc string? Description for the window
 ---@field opts table
 ---@field width number? Saved width for vertical splits
 ---@field height number? Saved height for horizontal splits
@@ -83,14 +84,15 @@ end
 
 --- Create a new flex plane window
 ---@param cmd string? Command to run (optional, uses default if not provided)
----@param user_opts table? User options
+---@param user_opts table? User options (can include `desc` field for description)
 ---@return number buf_id Buffer ID
 function M.open(cmd, user_opts)
   local opts = vim.tbl_deep_extend("force", config.options, user_opts or {})
+  local desc = opts.desc or cmd or "terminal"
 
-  -- Check if window with same command already exists
+  -- Check if window with same command and desc already exists
   for _, win_info in ipairs(M.windows) do
-    if win_info.cmd == (cmd or opts.default_cmd) then
+    if win_info.cmd == (cmd or opts.default_cmd) and win_info.desc == desc then
       -- Check if buffer still valid
       if not vim.api.nvim_buf_is_valid(win_info.buf) then
         -- Buffer invalid, remove and create new
@@ -114,7 +116,7 @@ function M.open(cmd, user_opts)
 
   -- Create buffer
   local buf = vim.api.nvim_create_buf(false, true)
-  local buf_name = cmd and ("flex-plane: " .. cmd) or "flex-plane: terminal"
+  local buf_name = string.format("flex-plane: %s", desc)
   vim.api.nvim_buf_set_name(buf, buf_name)
 
   -- Store window info
@@ -122,6 +124,7 @@ function M.open(cmd, user_opts)
     id = #M.windows + 1,
     buf = buf,
     cmd = cmd or opts.default_cmd,
+    desc = desc,
     opts = opts,
     width = nil,
     height = nil,
@@ -215,11 +218,14 @@ end
 
 --- Toggle a flex plane window
 ---@param cmd string? Command to run
----@param user_opts table? User options
+---@param user_opts table? User options (can include `desc` field for description)
 function M.toggle(cmd, user_opts)
-  -- Find existing window with same command
+  local opts = vim.tbl_deep_extend("force", config.options, user_opts or {})
+  local desc = opts.desc or cmd or "terminal"
+
+  -- Find existing window with same command and desc
   for _, win_info in ipairs(M.windows) do
-    if win_info.cmd == (cmd or config.options.default_cmd) then
+    if win_info.cmd == (cmd or config.options.default_cmd) and win_info.desc == desc then
       -- Check if buffer still valid
       if not vim.api.nvim_buf_is_valid(win_info.buf) then
         -- Buffer invalid, remove and create new
@@ -356,18 +362,19 @@ function M.list()
       size_info = string.format("[%d rows] ", win_info.height)
     end
 
+    local display_desc = win_info.desc or win_info.cmd
     table.insert(qf_list, {
       bufnr = 0,
       lnum = idx,
       col = 1,
-      text = string.format("[%s] %s: %s", status, size_info, win_info.cmd),
+      text = string.format("[%s] %s%s", status, size_info, display_desc),
     })
   end
 
-  -- Store mapping from line number to command
-  M._qf_commands = {}
+  -- Store mapping from line number to window info
+  M._qf_windows = {}
   for idx, win_info in ipairs(M.windows) do
-    M._qf_commands[idx] = win_info.cmd
+    M._qf_windows[idx] = win_info
   end
 
   vim.fn.setqflist(qf_list, "r")
@@ -378,108 +385,12 @@ function M.list()
   local qf_buf = vim.api.nvim_win_get_buf(qf_win)
   vim.keymap.set("n", "<CR>", function()
     local line = vim.api.nvim_win_get_cursor(0)[1]
-    local cmd = M._qf_commands[line]
-    if cmd then
+    local win_info = M._qf_windows[line]
+    if win_info then
       vim.cmd("cclose")
-      M.toggle(cmd)
+      M.toggle(win_info.cmd, { desc = win_info.desc })
     end
   end, { buffer = qf_buf, nowait = true })
-end
-
---- Show help with all windows and key actions
-function M.help()
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_name(buf, "flex-plane-help")
-
-  local lines = {
-    "Flex Plane - Help",
-    "=================",
-    "",
-    "Windows:",
-  }
-
-  if #M.windows == 0 then
-    table.insert(lines, "  No active windows")
-  else
-    for _, win_info in ipairs(M.windows) do
-      local visible = false
-      for _, win in ipairs(vim.api.nvim_list_wins()) do
-        if vim.api.nvim_win_get_buf(win) == win_info.buf then
-          visible = true
-          break
-        end
-      end
-      local status = visible and "+" or " "
-      local size_info = ""
-      local _, is_vertical = direction_to_split(win_info.opts.position)
-      if is_vertical and win_info.width then
-        size_info = string.format(" [%d cols]", win_info.width)
-      elseif not is_vertical and win_info.height then
-        size_info = string.format(" [%d rows]", win_info.height)
-      end
-      table.insert(lines, string.format("  [%c] %d: %s%s", status, win_info.id, win_info.cmd, size_info))
-    end
-  end
-
-  table.insert(lines, "")
-  table.insert(lines, "Actions:")
-  table.insert(lines, "  <Enter> - Show/Hide selected window")
-  table.insert(lines, "  d       - Delete selected window")
-  table.insert(lines, "  q       - Close this help")
-
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-
-  -- Open in split
-  vim.cmd("vsplit")
-  vim.api.nvim_win_set_buf(0, buf)
-  vim.api.nvim_win_set_option(0, "number", false)
-  vim.api.nvim_win_set_option(0, "relativenumber", false)
-  vim.api.nvim_win_set_option(0, "signcolumn", "no")
-
-  -- Set up keymaps
-  vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", { silent = true })
-  vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", ":lua require('flex_plane')._help_action('show')<CR>",
-    { silent = true })
-  vim.api.nvim_buf_set_keymap(buf, "n", "d", ":lua require('flex_plane')._help_action('delete')<CR>",
-    { silent = true })
-
-  -- Store current windows for keymap actions
-  M._help_windows = {}
-  for _, win_info in ipairs(M.windows) do
-    table.insert(M._help_windows, win_info.id)
-  end
-end
-
---- Handle help window actions
----@param action string Action to perform
-function M._help_action(action)
-  local line = vim.api.nvim_win_get_cursor(0)[1]
-  local window_idx = line - 9 -- Skip header lines
-
-  if M._help_windows and M._help_windows[window_idx] then
-    local id = M._help_windows[window_idx]
-    if action == "show" then
-      local visible = false
-      for _, win in ipairs(vim.api.nvim_list_wins()) do
-        if vim.api.nvim_win_get_buf(win) == M.windows[id].buf then
-          visible = true
-          break
-        end
-      end
-
-      if visible then
-        M.hide(id)
-      else
-        M.show(id)
-      end
-      M.help() -- Refresh help
-    elseif action == "delete" then
-      M.close(id)
-      M.help() -- Refresh help
-    end
-  end
 end
 
 --- Setup plugin options
