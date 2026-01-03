@@ -14,6 +14,28 @@ M.windows = {}
 
 local augroup = vim.api.nvim_create_augroup("FlexPlane", { clear = true })
 
+--- Convert direction to split command
+---@param direction string
+---@return string split_cmd, boolean is_vertical
+local function direction_to_split(direction)
+  if direction == "left" then
+    return "topleft vsplit", true
+  elseif direction == "right" then
+    return "botright vsplit", true
+  elseif direction == "top" then
+    return "topleft split", false
+  elseif direction == "bottom" then
+    return "botright split", false
+  end
+  -- Fallback for old config values
+  if direction == "vertical" then
+    return "vsplit", true
+  elseif direction == "horizontal" then
+    return "split", false
+  end
+  return "vsplit", true
+end
+
 --- Save window size when user resizes it
 ---@param win_info FlexPlaneWindow
 local function save_window_size(win_info)
@@ -38,7 +60,9 @@ local function apply_window_size(win_info, win)
   vim.api.nvim_set_option_value("winfixwidth", true, { win = win })
   vim.api.nvim_set_option_value("winfixheight", true, { win = win })
 
-  if opts.direction == "vertical" then
+  local split_cmd, is_vertical = direction_to_split(opts.position)
+
+  if is_vertical then
     if win_info.width then
       vim.api.nvim_win_set_width(win, win_info.width)
     elseif opts.default_width then
@@ -97,11 +121,8 @@ function M.open(cmd, user_opts)
   table.insert(M.windows, window_info)
 
   -- Open split window
-  if opts.direction == "horizontal" then
-    vim.cmd(opts.split_cmd .. " split")
-  else
-    vim.cmd(opts.split_cmd .. " vsplit")
-  end
+  local split_cmd = direction_to_split(opts.position)
+  vim.cmd(split_cmd)
 
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, buf)
@@ -213,11 +234,8 @@ function M.show(id)
   for _, win_info in ipairs(M.windows) do
     if win_info.id == id then
       local opts = win_info.opts
-      if opts.direction == "horizontal" then
-        vim.cmd(opts.split_cmd .. " split")
-      else
-        vim.cmd(opts.split_cmd .. " vsplit")
-      end
+      local split_cmd = direction_to_split(opts.position)
+      vim.cmd(split_cmd)
 
       local win = vim.api.nvim_get_current_win()
       vim.api.nvim_win_set_buf(win, win_info.buf)
@@ -306,9 +324,10 @@ function M.list()
 
     local status = visible and "+" or " "
     local size_info = ""
-    if win_info.opts.direction == "vertical" and win_info.width then
+    local _, is_vertical = direction_to_split(win_info.opts.position)
+    if is_vertical and win_info.width then
       size_info = string.format("[%d cols] ", win_info.width)
-    elseif win_info.opts.direction == "horizontal" and win_info.height then
+    elseif not is_vertical and win_info.height then
       size_info = string.format("[%d rows] ", win_info.height)
     end
 
@@ -369,9 +388,10 @@ function M.help()
       end
       local status = visible and "+" or " "
       local size_info = ""
-      if win_info.opts.direction == "vertical" and win_info.width then
+      local _, is_vertical = direction_to_split(win_info.opts.position)
+      if is_vertical and win_info.width then
         size_info = string.format(" [%d cols]", win_info.width)
-      elseif win_info.opts.direction == "horizontal" and win_info.height then
+      elseif not is_vertical and win_info.height then
         size_info = string.format(" [%d rows]", win_info.height)
       end
       table.insert(lines, string.format("  [%c] %d: %s%s", status, win_info.id, win_info.cmd, size_info))
