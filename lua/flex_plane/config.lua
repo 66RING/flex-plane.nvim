@@ -5,14 +5,12 @@ local M = {}
 ---@field default_width number|function Default width for vertical splits
 ---@field default_height number|function Default height for horizontal splits
 ---@field default_cmd string Default command to run
----@field close_on_exit boolean Close window when command exits
 
 M.options = {
   position = "right",
-  default_width = 50,
-  default_height = 20,
+  default_width = 30,
+  default_height = 15,
   default_cmd = vim.o.shell,
-  close_on_exit = false,
 }
 
 --- Setup plugin configuration

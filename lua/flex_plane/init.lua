@@ -146,15 +146,6 @@ function M.open(cmd, user_opts)
     M.run_command(window_info)
   end
 
-  -- Set up autoclose
-  if opts.close_on_exit then
-    vim.api.nvim_buf_attach(buf, false, {
-      on_detach = function()
-        M.close(window_info.id)
-      end,
-    })
-  end
-
   return window_info.buf
 end
 
@@ -171,17 +162,7 @@ function M.run_command(window_info)
   local final_cmd = cmd:gsub("^term:", ""):gsub("^terminal:", ""):gsub("^!", "")
 
   -- Open terminal in buffer
-  vim.fn.termopen(final_cmd, {
-    on_exit = function(_, exit_code, _)
-      if window_info.opts.close_on_exit then
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(buf) then
-            M.close(window_info.id)
-          end
-        end)
-      end
-    end,
-  })
+  vim.fn.termopen(final_cmd)
 
   -- Enter insert mode
   vim.cmd("startinsert")
