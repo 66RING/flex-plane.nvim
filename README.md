@@ -2,6 +2,8 @@
 
 A simple Neovim plugin to manage sidebar windows that run any command/program.
 
+<img width="1353" height="998" alt="image" src="https://github.com/user-attachments/assets/4f58c7df-e294-4a4d-a5d4-3aa97acac26f" />
+
 ## Features
 
 - Create split windows (left/right/top/bottom)
