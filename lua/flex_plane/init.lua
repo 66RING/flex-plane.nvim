@@ -2,7 +2,6 @@ local config = require("flex_plane.config")
 local M = {}
 
 ---@class FlexPlaneWindow
----@field id number
 ---@field buf number
 ---@field cmd string
 ---@field desc string? Description for the window
@@ -13,7 +12,6 @@ local M = {}
 ---@type FlexPlaneWindow[]
 M.windows = {}
 
-local next_id = 1
 local augroup = vim.api.nvim_create_augroup("FlexPlane", { clear = true })
 
 --- Convert direction to split command
@@ -92,12 +90,12 @@ function M.open(cmd, user_opts)
   local desc = opts.desc or cmd or "terminal"
 
   -- Check if window with same command and desc already exists
-  for _, win_info in ipairs(M.windows) do
+  for i, win_info in ipairs(M.windows) do
     if win_info.cmd == (cmd or opts.default_cmd) and win_info.desc == desc then
       -- Check if buffer still valid
       if not vim.api.nvim_buf_is_valid(win_info.buf) then
         -- Buffer invalid, remove and create new
-        table.remove(M.windows, win_info.id)
+        table.remove(M.windows, i)
         break
       end
 
@@ -110,7 +108,7 @@ function M.open(cmd, user_opts)
       end
 
       -- Window not visible, show it
-      M.show(win_info.id)
+      M.show(win_info.buf)
       return win_info.buf
     end
   end
@@ -122,7 +120,6 @@ function M.open(cmd, user_opts)
 
   -- Store window info
   local window_info = {
-    id = next_id,
     buf = buf,
     cmd = cmd or opts.default_cmd,
     desc = desc,
@@ -130,7 +127,6 @@ function M.open(cmd, user_opts)
     width = nil,
     height = nil,
   }
-  next_id = next_id + 1
   table.insert(M.windows, window_info)
 
   -- Open split window
@@ -171,10 +167,10 @@ function M.run_command(window_info)
 end
 
 --- Close a flex plane window
----@param id number Window ID
-function M.close(id)
+---@param buf number Buffer ID
+function M.close(buf)
   for i, win_info in ipairs(M.windows) do
-    if win_info.id == id then
+    if win_info.buf == buf then
       -- Close all windows showing this buffer
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == win_info.buf then
@@ -195,7 +191,7 @@ end
 --- Close all flex plane windows
 function M.close_all()
   for i = #M.windows, 1, -1 do
-    M.close(M.windows[i].id)
+    M.close(M.windows[i].buf)
   end
 end
 
@@ -220,12 +216,12 @@ function M.toggle(cmd, user_opts)
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_get_buf(win) == win_info.buf then
           -- Window is visible, hide it
-          M.hide(win_info.id)
+          M.hide(win_info.buf)
           return
         end
       end
       -- Buffer exists but not visible, show it
-      M.show(win_info.id)
+      M.show(win_info.buf)
       return
     end
   end
@@ -233,10 +229,10 @@ function M.toggle(cmd, user_opts)
 end
 
 --- Show an existing flex plane window (open in split)
----@param id number Window ID
-function M.show(id)
+---@param buf number Buffer ID
+function M.show(buf)
   for _, win_info in ipairs(M.windows) do
-    if win_info.id == id then
+    if win_info.buf == buf then
       local opts = win_info.opts
       local split_cmd = direction_to_split(opts.position)
       vim.cmd(split_cmd)
@@ -253,10 +249,10 @@ function M.show(id)
 end
 
 --- Hide a flex plane window (close window but keep buffer)
----@param id number Window ID
-function M.hide(id)
+---@param buf number Buffer ID
+function M.hide(buf)
   for _, win_info in ipairs(M.windows) do
-    if win_info.id == id then
+    if win_info.buf == buf then
       -- Save size before hiding
       save_window_size(win_info)
 
