@@ -13,6 +13,7 @@ local M = {}
 ---@type FlexPlaneWindow[]
 M.windows = {}
 
+local next_id = 1
 local augroup = vim.api.nvim_create_augroup("FlexPlane", { clear = true })
 
 --- Convert direction to split command
@@ -121,7 +122,7 @@ function M.open(cmd, user_opts)
 
   -- Store window info
   local window_info = {
-    id = #M.windows + 1,
+    id = next_id,
     buf = buf,
     cmd = cmd or opts.default_cmd,
     desc = desc,
@@ -129,6 +130,7 @@ function M.open(cmd, user_opts)
     width = nil,
     height = nil,
   }
+  next_id = next_id + 1
   table.insert(M.windows, window_info)
 
   -- Open split window
@@ -205,12 +207,12 @@ function M.toggle(cmd, user_opts)
   local desc = opts.desc or cmd or "terminal"
 
   -- Find existing window with same command and desc
-  for _, win_info in ipairs(M.windows) do
+  for i, win_info in ipairs(M.windows) do
     if win_info.cmd == (cmd or config.options.default_cmd) and win_info.desc == desc then
       -- Check if buffer still valid
       if not vim.api.nvim_buf_is_valid(win_info.buf) then
         -- Buffer invalid, remove and create new
-        table.remove(M.windows, win_info.id)
+        table.remove(M.windows, i)
         break
       end
 
