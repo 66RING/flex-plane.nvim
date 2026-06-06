@@ -317,6 +317,13 @@ end
 
 --- List all flex plane windows in quickfix
 function M.list()
+  -- Clean up dead entries
+  for i = #M.windows, 1, -1 do
+    if not vim.api.nvim_buf_is_valid(M.windows[i].buf) then
+      table.remove(M.windows, i)
+    end
+  end
+
   if #M.windows == 0 then
     vim.notify("No flex plane windows", vim.log.levels.INFO)
     return
